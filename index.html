@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>图片K-means聚类</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="./js/k-means.js"></script>
+    <script src="./js/ai-color-harmony.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+            margin: 0;
+            padding: 24px;
+            background: #f5f7fa;
+            color: #2c3e50;
+            line-height: 1.6;
+        }
+        h2 { margin-top: 0; color: #1a2a3a; }
+        .toolbar {
+            background: #fff;
+            padding: 16px 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .toolbar input[type="file"] { padding: 6px 10px; }
+        .toolbar input[type="number"] {
+            width: 60px;
+            padding: 6px 8px;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+        }
+        .toolbar label { display: inline-flex; align-items: center; gap: 6px; }
+        .toolbar button {
+            background: #4a90d9;
+            color: #fff;
+            border: none;
+            padding: 8px 22px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .toolbar button:hover { background: #357abd; }
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            margin-bottom: 24px;
+        }
+        .card h3 { margin-top: 0; color: #1a2a3a; border-bottom: 2px solid #eef2f7; padding-bottom: 10px; }
+        #paletteDisplay .palette-item {
+            text-align: center;
+            font-size: 13px;
+        }
+        #paletteDisplay .swatch {
+            width: 70px;
+            height: 70px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            margin-bottom: 6px;
+            box-shadow: inset 0 0 0 2px rgba(255,255,255,0.4);
+        }
+        .image-compare {
+            display: flex;
+            gap: 32px;
+            flex-wrap: wrap;
+        }
+        .image-compare > div { text-align: center; }
+        .image-compare img {
+            max-width: 300px;
+            max-height: 300px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            display: block;
+            margin-top: 8px;
+        }
+        .image-compare p { font-weight: 600; margin: 0; color: #4a5568; }
+        .viz-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            margin-bottom: 24px;
+        }
+        .viz-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .viz-header h3 { margin: 0; color: #1a2a3a; }
+        .view-toggle {
+            display: inline-flex;
+            border: 1px solid #d0d7de;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f8fafc;
+        }
+        .view-toggle button {
+            border: 0;
+            background: transparent;
+            color: #4a5568;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s, color 0.2s;
+        }
+        .view-toggle button + button {
+            border-left: 1px solid #d0d7de;
+        }
+        .view-toggle button.active {
+            background: #4a90d9;
+            color: #fff;
+        }
+        #vizChart {
+            width: 100%;
+            height: 420px;
+        }
+        .ai-form {
+            display: grid;
+            grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(140px, 0.7fr) auto;
+            gap: 12px;
+            align-items: end;
+        }
+        .ai-form label {
+            display: grid;
+            gap: 6px;
+            color: #4a5568;
+            font-size: 13px;
+        }
+        .ai-form input {
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+        .ai-form button {
+            background: #4a90d9;
+            color: #fff;
+            border: none;
+            padding: 9px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .ai-form button:disabled {
+            background: #9db9d3;
+            cursor: not-allowed;
+        }
+        #aiHarmonyResult {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid #e5eaf0;
+            color: #2c3e50;
+            min-height: 52px;
+            white-space: pre-wrap;
+        }
+        @media (max-width: 900px) {
+            .ai-form {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h2>图片 K-means 颜色聚类</h2>
+
+
+    <div class="toolbar">
+        <input type="file" id="imageInput" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.svg">
+        <label>K值: <input type="number" id="kInput" value="5" min="2" max="20"></label>
+        <label>
+            <input type="radio" name="colorSpace" value="RGB" checked> RGB
+            <input type="radio" name="colorSpace" value="LAB" style="margin-left:8px;"> LAB
+        </label>
+        <button id="clusterBtn">开始聚类</button>
+    </div>
+
+    <!-- 结果展示 -->
+    <div id="result" style="display:none;">
+        <div id="paletteDisplay" class="card"></div>
+
+        <div class="card">
+            <h3>原图 vs 聚类图对比</h3>
+            <div class="image-compare">
+                <div>
+                    <p>原图</p>
+                    <img id="originalImage" style="max-width:300px;border:1px solid #ccc;">
+                </div>
+                <div>
+                    <p>聚类后图片</p>
+                    <img id="clusteredImage" style="max-width:300px;border:1px solid #ccc;">
+                </div>
+            </div>
+        </div>
+
+        <div class="viz-card">
+            <div class="viz-header">
+                <h3>聚类可视化</h3>
+                <div class="view-toggle" role="tablist" aria-label="聚类可视化切换">
+                    <button id="pieViewBtn" class="active" type="button">环形图</button>
+                    <button id="barViewBtn" type="button">柱状图</button>
+                    <button id="treemapViewBtn" type="button">色块图</button>
+                </div>
+            </div>
+            <div id="vizChart"></div>
+        </div>
+
+        <div class="card">
+            <h3>AI 配色和谐度判断</h3>
+            <div class="ai-form">
+                <label>
+                    API Key
+                    <input type="password" id="aiApiKey" placeholder="填入你的 API Key">
+                </label>
+                <label>
+                    接口地址
+                    <input type="text" id="aiEndpoint" value="https://api.closeaiasia.com/v1/chat/completions">
+                </label>
+                <label>
+                    模型
+                    <input type="text" id="aiModel" value="gpt-4o-mini">
+                </label>
+                <button id="analyzeHarmonyBtn" type="button" disabled>判断配色</button>
+            </div>
+            <div id="aiHarmonyResult">完成聚类后可调用大语言模型判断颜色搭配是否和谐。</div>
+        </div>
+    </div>
+
+    <script>
+        let currentVisualization = 'pie';
+        let currentResult = null;
+        let vizChart = null;
+
+        window.addEventListener('DOMContentLoaded', function() {
+            loadDefaultImage();
+        });
+
+        document.getElementById('clusterBtn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('imageInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('请先选择图片');
+                return;
+            }
+
+            runClustering(file);
+        });
+
+        document.getElementById('pieViewBtn').addEventListener('click', function() {
+            switchVisualization('pie');
+        });
+
+        document.getElementById('barViewBtn').addEventListener('click', function() {
+            switchVisualization('bar');
+        });
+
+        document.getElementById('treemapViewBtn').addEventListener('click', function() {
+            switchVisualization('treemap');
+        });
+
+        async function loadDefaultImage() {
+            try {
+                const response = await fetch('./01.jpg');
+                if (!response.ok) {
+                    throw new Error('无法读取默认图片 01.jpg');
+                }
+                const blob = await response.blob();
+                const file = new File([blob], '01.jpg', { type: blob.type || 'image/jpeg' });
+                await runClustering(file, true);
+            } catch (err) {
+                document.getElementById('aiHarmonyResult').textContent = '默认图片加载失败：' + err.message;
+                console.error(err);
+            }
+        }
+
+        async function runClustering(file, silent = false) {
+            const k = parseInt(document.getElementById('kInput').value);
+            const colorSpace = document.querySelector('input[name="colorSpace"]:checked').value;
+            const clusterBtn = document.getElementById('clusterBtn');
+
+            clusterBtn.disabled = true;
+            clusterBtn.textContent = '处理中...';
+
+            try {
+                const result = await kmeansImageClusterFromFile(file, k, { colorSpace });
+                document.getElementById('result').style.display = 'block';
+                renderResult(result, result.originalImageUrl);
+                if (!silent) {
+                    document.getElementById('aiHarmonyResult').textContent = '已生成颜色均值，可点击“判断配色”调用模型分析。';
+                }
+            } catch (err) {
+                if (!silent) {
+                    alert('聚类失败: ' + err.message);
+                }
+                console.error(err);
+            } finally {
+                clusterBtn.disabled = false;
+                clusterBtn.textContent = '开始聚类';
+            }
+        }
+
+        document.getElementById('analyzeHarmonyBtn').addEventListener('click', async function() {
+            if (!currentResult) return;
+
+            const apiKey = document.getElementById('aiApiKey').value.trim();
+            const endpoint = document.getElementById('aiEndpoint').value.trim();
+            const model = document.getElementById('aiModel').value.trim();
+            const resultBox = document.getElementById('aiHarmonyResult');
+            const button = document.getElementById('analyzeHarmonyBtn');
+
+            if (!apiKey || !endpoint || !model) {
+                alert('请填写 API Key、接口地址和模型');
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = '判断中...';
+            resultBox.textContent = '正在请求模型分析配色...';
+
+            try {
+                const text = await analyzeColorHarmonyWithAI({
+                    apiKey,
+                    endpoint,
+                    model,
+                    palette: currentResult.palette
+                });
+                resultBox.textContent = text;
+            } catch (err) {
+                resultBox.textContent = 'AI 判断失败：' + err.message;
+                console.error(err);
+            } finally {
+                button.disabled = false;
+                button.textContent = '判断配色';
+            }
+        });
+
+        function renderResult(result, originalImageBase64) {
+            currentResult = result;
+            renderVisualization(currentVisualization);
+            document.getElementById('analyzeHarmonyBtn').disabled = false;
+            document.getElementById('aiHarmonyResult').textContent = '已生成颜色均值，可点击“判断配色”调用模型分析。';
+
+            // 1. 显示调色板
+            const paletteDiv = document.getElementById('paletteDisplay');
+            let paletteHtml = '<h3>调色板</h3><div style="display:flex;flex-wrap:wrap;gap:16px;">';
+            result.palette.forEach(p => {
+                paletteHtml += `
+                    <div class="palette-item">
+                        <div class="swatch" style="background:${p.hex};"></div>
+                        <div><strong>${p.hex}</strong></div>
+                        <div>RGB(${p.r},${p.g},${p.b})</div>
+                        <div>${p.percentage}</div>
+                        <div>${p.pixelCount.toLocaleString()}px</div>
+                    </div>
+                `;
+            });
+            paletteHtml += '</div>';
+            paletteDiv.innerHTML = paletteHtml;
+
+            // 2. 显示原图与聚类后图片对比
+            document.getElementById('originalImage').src = originalImageBase64;
+            document.getElementById('clusteredImage').src = result.clusteredImageBase64;
+        }
+
+        function switchVisualization(view) {
+            currentVisualization = view;
+            document.getElementById('pieViewBtn').classList.toggle('active', view === 'pie');
+            document.getElementById('barViewBtn').classList.toggle('active', view === 'bar');
+            document.getElementById('treemapViewBtn').classList.toggle('active', view === 'treemap');
+            renderVisualization(view);
+        }
+
+        function renderVisualization(view) {
+            if (!currentResult) return;
+
+            const chartDom = document.getElementById('vizChart');
+            if (!vizChart) {
+                vizChart = echarts.init(chartDom);
+            }
+
+            const optionMap = {
+                pie: currentResult.echartsOptions.pieOption,
+                bar: currentResult.echartsOptions.barOption,
+                treemap: currentResult.echartsOptions.treemapOption
+            };
+            const option = optionMap[view] || optionMap.pie;
+
+            vizChart.clear();
+            vizChart.setOption(option, true);
+            vizChart.resize();
+        }
+
+        window.addEventListener('resize', function() {
+            if (vizChart) {
+                vizChart.resize();
+            }
+        });
+
+    </script>
+</body>
+</html>
